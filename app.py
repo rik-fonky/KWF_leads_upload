@@ -30,7 +30,6 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 from oauth2client.service_account import ServiceAccountCredentials
-from google.auth.transport.requests import Request
 
 app = Flask(__name__)
 
@@ -146,9 +145,7 @@ def build_drive_service():
     # Explicitly request the credentials to refresh if they are not already valid
     if not credentials.valid:
         if credentials.requires_scopes:
-            credentials = credentials.with_scopes(scopes)
-        credentials.refresh(Request())
-    
+            credentials = credentials.with_scopes(scopes)    
     # Build the service client using the obtained credentials
     service = build('drive', 'v3', credentials=credentials)
     return service
