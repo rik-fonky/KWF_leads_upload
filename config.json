@@ -1,0 +1,36 @@
+{
+  "log_file_prefix": "KWF_leadexport_tf_api",
+  "api_url": "http://fonky.telforce.nl/vicidial/non_agent_api.php",
+  "common_api_params": {
+    "source": "Google Cloud",
+    "user": "Fonky079",
+    "pass": "WelcomeBack2023",
+    "function": "add_lead",
+    "phone_code": "31",
+    "list_id": "301",
+    "dnc_check": "N",
+    "duplicate_check": "DUPSYS30DAY",
+    "custom_fields": "Y",
+    "template_id": "003"
+  },
+  "allowed_fields": [
+    "Bestandstype", "NaamBestandAanlevering", "DatumBestandAanlevering", "AccountIDvanhetwervingsbureau",
+    "Filiaalnaam", "RecordIDWervingsbureau", "WerverID", "Opdrachtgever", "Controlegetal", "ProspectID",
+    "AccountID", "ContactID1", "ContactID2", "AffiliationID1", "AffiliationID2", "Campagnecode", "SamengesteldeNaam1",
+    "Sexe1", "Titel1", "Voornaam1", "Voorletters1", "Tussenvoegsel1", "NatuurlijkPersoonNaam1", "Geboortedatum1",
+    "TelefoonnrPrive1", "TelefoonnrWerk1", "TelefoonnrAlternatief1", "Emailadres1", "Straat", "Huisnr", "Huisnrtv",
+    "Postcode", "Woonplaats", "Land", "Extraveld1-opt-inTel", "Extraveld2-opt-inSMS", "Extraveld3-opt-inE-mail",
+    "Extraveld4", "Extraveld5", "StartdatumRelatie", "EinddatumRelatie", "StartdatumProduct", "EinddatumProduct",
+    "OvereenkomstID", "BetalingsprofielID", "OvereenkomstStartdatum", "OvereenkomstEinddatum",
+    "OvereenkomstBedragPerPeriode", "OvereenkomstFrequentie", "OvereenkomstBetaalwijzeCode",
+    "OvereenkomstBetaalwijzeOmschrijving", "OvereenkomstBTWCode", "OvereenkomstBankrekening", "MutSexe1",
+    "MutTitelcode1", "MutVoornaam1", "MutVoorletters1", "MutTussenvoegsel1", "MutNatuurlijkPersoonNaam1",
+    "MutGeboortedatum1", "MutTelefoonnrPrive1", "MutTelefoonnrWerk1", "MutTelefoonnrAlternatief1", "MutEmailadres1",
+    "MutStraat", "MutHuisnr", "MutHuisnrtv", "MutPostcode", "MutWoonplaats", "MutLand", "MutOvereenkomstStartdatum",
+    "MutOvereenkomstEinddatum", "MutOvereenkomstBedragPerPeriode", "MutOvereenkomstAantalLoten",
+    "MutOvereenkomstBetaalwijzeCode", "MutOvereenkomstBankrekening", "MutOptOutEM", "MutOptOutTM", "MutOptOutDM",
+    "MutOptOutMobiel", "MutOptOutSMS", "MutToestemmingtekstID", "TekstIDConsent01", "TekstIDConsent02",
+    "TekstIDConsent03", "MutOpmerking"
+],
+  "folder_id": "1jiJQL-vd0rd_SpUIlbzhjc-9d1kawRb7"
+}
