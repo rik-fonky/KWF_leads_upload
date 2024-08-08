@@ -199,17 +199,16 @@ def get_latest_file(service, folder_id, prefix):
         return fh, latest_file['name']
 
 def is_file_processed(file_name):
-    try:
-        with open('processed_files.txt', 'r') as file:
-            processed_files = file.read()
-            return file_name in processed_files
-    except FileNotFoundError:
-        # If the file doesn't exist, treat as if no files have been processed
-        return False
+    storage_client = storage.Client()
+    bucket = storage_client.bucket('automatic_processes_bucket')  # Replace with your GCS bucket name
+    blob = bucket.blob(f'KWF_leads/processed_files/{file_name}')
+    return blob.exists()
 
 def record_processed_file(file_name):
-    with open('processed_files.txt', 'a') as file:
-        file.write(file_name + '\n')
+    storage_client = storage.Client()
+    bucket = storage_client.bucket('automatic_processes_bucket')  # Replace with your GCS bucket name
+    blob = bucket.blob(f'KWF_leads/processed_files/{file_name}')
+    blob.upload_from_string('')  # Upload an empty string as a marker
 
 def main():
     app_logger.info("Starting the application.")
