@@ -87,7 +87,7 @@ common_api_params = config['common_api_params']
 allowed_fields = config['allowed_fields']
 
 def upload_lead(lead_data):
-
+    
     # Remove spaces from field names
     lead_data = {k.replace(' ', ''): v for k, v in lead_data.items()}
 
@@ -96,13 +96,18 @@ def upload_lead(lead_data):
         phone_number = str(lead_data['TelefoonnrPrive1']).zfill(10)
         lead_data['TelefoonnrPrive1'] = phone_number
         lead_data['phone_number'] = phone_number
+        
+    if 'OvereenkomstBedragPerPeriode' in lead_data:
+        lead_data['Oudbedragcustom'] = lead_data['OvereenkomstBedragPerPeriode']
+
 
     filtered_data = {k: v for k, v in lead_data.items() if k in allowed_fields and pd.notna(v)}
 
     # Ensure phone_number is included in the API call
     if 'phone_number' in lead_data:
         filtered_data['phone_number'] = lead_data['phone_number']
-
+        
+        
     api_params = {**common_api_params, **filtered_data}
 
     response = requests.get(api_url, params=api_params)
