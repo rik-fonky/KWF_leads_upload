@@ -30,7 +30,7 @@
     "MutOvereenkomstEinddatum", "MutOvereenkomstBedragPerPeriode", "MutOvereenkomstAantalLoten",
     "MutOvereenkomstBetaalwijzeCode", "MutOvereenkomstBankrekening", "MutOptOutEM", "MutOptOutTM", "MutOptOutDM",
     "MutOptOutMobiel", "MutOptOutSMS", "MutToestemmingtekstID", "TekstIDConsent01", "TekstIDConsent02",
-    "TekstIDConsent03", "MutOpmerking"
+    "TekstIDConsent03", "MutOpmerking", "Oudbedragcustom"
 ],
   "folder_id": "1jiJQL-vd0rd_SpUIlbzhjc-9d1kawRb7"
 }
