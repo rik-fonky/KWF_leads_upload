@@ -231,7 +231,7 @@ def main():
         record_processed_file(latest_file_name)
     else:
         print(f"File {latest_file_name} has already been uploaded")
-        app_logger.info(f"File {latest_file_name} has already been uploaded")
+        app_logger.error(f"File {latest_file_name} has already been uploaded")
 
     # Verify the folder ID
     folder_id = config['folder_id']
