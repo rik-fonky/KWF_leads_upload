@@ -30,6 +30,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from googleapiclient.errors import HttpError
 from oauth2client.service_account import ServiceAccountCredentials
+import sys
+import traceback
 
 app = Flask(__name__)
 
@@ -43,39 +45,30 @@ config_path = os.path.join(script_dir, 'config.json')
 with open(config_path) as config_file:
     config = json.load(config_file)
 
-log_file_prefix = config['log_file_prefix']
+# Set up logging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
 
-# Generate log file name with datetime
-current_time = datetime.now().strftime("%Y%d%m_%H%M%S")
-log_file = f'{log_file_prefix}_{current_time}.txt'
+# Stream handler to print logs to the console
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Formatter for the handlers
+formatter = logging.Formatter("%(asctime)-15s %(levelname)-8s %(message)s")
+console_handler.setFormatter(formatter)
+
+# Add handlers to the logger
+logger.addHandler(console_handler)
+
+def log_uncaught_exceptions(ex_cls, ex, tb):
+    logger.critical(''.join(traceback.format_tb(tb)))
+    logger.critical('{0}: {1}'.format(ex_cls, ex))
+
+sys.excepthook = log_uncaught_exceptions
 
 # Create and configure the application logger
 app_logger = logging.getLogger('app_logger')
 app_logger.setLevel(logging.DEBUG)  # Set to DEBUG level
-
-# Create file handler which logs even debug messages
-file_handler = logging.FileHandler(log_file, mode='w')
-file_handler.setLevel(logging.DEBUG)  # Set to DEBUG level
-
-# Create console handler with a higher log level
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)  # Set to DEBUG level
-
-# Create formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-console_handler.setFormatter(formatter)
-
-# Add the handlers to the logger
-app_logger.addHandler(file_handler)
-app_logger.addHandler(console_handler)
-
-# Separate logger for HTTP server access logs
-http_logger = logging.getLogger('werkzeug')
-http_logger.setLevel(logging.INFO)
-http_handler = logging.StreamHandler()
-http_handler.setFormatter(formatter)
-http_logger.addHandler(http_handler)
 
 # API Base URL
 api_url = config['api_url']
@@ -237,18 +230,6 @@ def main():
     folder_id = config['folder_id']
     app_logger.info(f"Using folder ID: {folder_id}")
     
-    # Upload the log file to Google Drive
-    log_file_id = upload_file_to_drive(service, log_file, folder_id)
-    
-    if log_file_id:
-        app_logger.info(f"Log file uploaded with file ID: {log_file_id}")
-    else:
-        app_logger.error("Failed to upload log file.")
-    
-    # Flush and close all handlers
-    for handler in app_logger.handlers:
-        handler.flush()
-        handler.close()
 
 @app.route('/')
 def run_main():
