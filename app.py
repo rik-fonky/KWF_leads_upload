@@ -15,26 +15,42 @@ Created on Mon Jul 22 13:26:47 2024
 import json
 import os
 import io
-import tempfile
 import logging
-from datetime import datetime
 import requests
-from flask import Flask, request
+from flask import Flask
 import pandas as pd
-import concurrent.futures
-import paramiko
 from google.auth import default
-from google.oauth2 import service_account
-from google.cloud import storage, secretmanager
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
-from googleapiclient.errors import HttpError
-from oauth2client.service_account import ServiceAccountCredentials
 import sys
 import traceback
+from google.cloud import logging as cloud_logging
+from google.cloud import storage
+from googleapiclient.http import MediaIoBaseDownload
+
 
 app = Flask(__name__)
 
+def setup_google_cloud_logging():
+    # Instantiates a client
+    logging_client = cloud_logging.Client()
+
+    # The name of the log to write to
+    logger_name = 'my-app-logger'
+
+    # Selects the log to write to
+    logger = logging_client.logger(logger_name)
+    
+    return logger
+
+# Create a global logger
+cloud_logger = setup_google_cloud_logging()
+
+# Correcting the exception handling to log with severity
+def log_uncaught_exceptions(ex_cls, ex, tb):
+    cloud_logger.log_text(''.join(traceback.format_tb(tb)), severity='ERROR')
+    cloud_logger.log_text(f'{ex_cls.__name__}: {str(ex)}', severity='ERROR')
+
+sys.excepthook = log_uncaught_exceptions
 # Get the directory where the script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -44,31 +60,6 @@ config_path = os.path.join(script_dir, 'config.json')
 # Load configuration from JSON file
 with open(config_path) as config_file:
     config = json.load(config_file)
-
-# Set up logging
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-
-# Stream handler to print logs to the console
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-
-# Formatter for the handlers
-formatter = logging.Formatter("%(asctime)-15s %(levelname)-8s %(message)s")
-console_handler.setFormatter(formatter)
-
-# Add handlers to the logger
-logger.addHandler(console_handler)
-
-def log_uncaught_exceptions(ex_cls, ex, tb):
-    logger.critical(''.join(traceback.format_tb(tb)))
-    logger.critical('{0}: {1}'.format(ex_cls, ex))
-
-sys.excepthook = log_uncaught_exceptions
-
-# Create and configure the application logger
-app_logger = logging.getLogger('app_logger')
-app_logger.setLevel(logging.DEBUG)  # Set to DEBUG level
 
 # API Base URL
 api_url = config['api_url']
@@ -116,7 +107,6 @@ def process_and_upload_leads(df):
     leads = df.to_dict(orient='records')
     success_count = 0
     error_count = 0
-    error_details = []
 
     for lead in leads:
         result = upload_lead(lead)
@@ -124,15 +114,12 @@ def process_and_upload_leads(df):
             success_count += 1
         else:
             error_count += 1
-            error_details.append(result)
+            cloud_logger.log_text(f"Lead upload failed: Data: {result.get('data')}, Error Message: {result.get('error')}", severity='ERROR')
 
-    app_logger.info(f'Total leads uploaded successfully: {success_count}')
-    app_logger.info(f'Total leads failed to upload: {error_count}')
-    if error_details:
-        app_logger.error('Error details:')
-        for error in error_details:
-            app_logger.error(f'Data: {error.get("data")}, Error Message: {error.get("error")}')
-
+    cloud_logger.log_text(f"Total leads uploaded successfully: {success_count}", severity='INFO')
+    cloud_logger.log_text(f"Total leads failed to upload: {error_count}", severity='INFO')
+    
+    
 def build_drive_service():
     # Define the scopes required for the Google Drive service
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -148,25 +135,6 @@ def build_drive_service():
     service = build('drive', 'v3', credentials=credentials)
     return service
 
-def upload_file_to_drive(service, file_name, folder_id):
-    app_logger.info(f"Attempting to upload file to folder ID: {folder_id}")
-    file_metadata = {
-        'name': file_name,
-        'parents': [folder_id]
-    }
-    media = MediaFileUpload(file_name, mimetype='text/plain')
-    try:
-        file = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id',
-            supportsAllDrives=True).execute()
-        app_logger.info(f"File ID: {file['id']} uploaded to Google Drive.")
-        return file['id']
-    except HttpError as error:
-        app_logger.error(f"An error occurred: {error}")
-        return None
-
 def get_latest_file(service, folder_id, prefix):
     """Fetch the latest file from Google Drive with the specified prefix in the given folder."""
     query = f"'{folder_id}' in parents and name contains '{prefix}' and trashed = false"
@@ -181,11 +149,11 @@ def get_latest_file(service, folder_id, prefix):
     ).execute()
     items = results.get('files', [])
     if not items:
-        app_logger.error('No files found.')
+        cloud_logger.log_text("No files found.", severity='ERROR')
         return None, None
     else:
         latest_file = items[0]
-        app_logger.info(f"Latest file found: {latest_file['name']} with ID: {latest_file['id']}")
+        cloud_logger.info(f"Latest file found: {latest_file['name']} with ID: {latest_file['id']}")
         # Download the file content using the file ID if necessary or return its ID
         request = service.files().get_media(fileId=latest_file['id'],supportsAllDrives=True)
         fh = io.BytesIO()
@@ -209,40 +177,28 @@ def record_processed_file(file_name):
     blob.upload_from_string('')  # Upload an empty string as a marker
 
 def main():
-    app_logger.info("Starting the application.")
-    
-    # Setup Google Drive service
+    cloud_logger.log_text("Starting the application.", severity='INFO')
     service = build_drive_service()
-    
-    # Fetch the latest file
-    folder_id = "1EnF0Ak4tcI3s3ExWDic1uDtfLT73JKFP"  # Ensure you have the correct folder ID
+    folder_id = config.get('folder_id')
     latest_file_content, latest_file_name = get_latest_file(service, folder_id, "KWF-D2D-KWFexport")
-    
+
     if latest_file_content and not is_file_processed(latest_file_name):
         df = pd.read_csv(latest_file_content, delimiter=';')
         process_and_upload_leads(df)
         record_processed_file(latest_file_name)
     else:
-        print(f"File {latest_file_name} has already been uploaded")
-        app_logger.error(f"File {latest_file_name} has already been uploaded")
-
-    # Verify the folder ID
-    folder_id = config['folder_id']
-    app_logger.info(f"Using folder ID: {folder_id}")
-    
+        cloud_logger.log_text(f"File {latest_file_name} has already been processed.", severity='ERROR')
 
 @app.route('/')
 def run_main():
-    app_logger.info("Received request at '/' endpoint")
+    cloud_logger.log_text("Received request at '/' endpoint", severity='INFO')
     try:
         main()
     except Exception as e:
-        app_logger.error("Error occurred", exc_info=True)
+        cloud_logger.log_text("Error occurred during main execution", severity='ERROR', trace=traceback.format_exc())
         return "Internal Server Error", 500
     return "Script executed successfully."
 
 if __name__ == '__main__':
-    print("Starting Flask application.")
-    port = int(os.environ.get('PORT', 8080))
-    app.debug = True
-    app.run(host='0.0.0.0', port=port)
+    cloud_logger.log_text("Starting Flask application.", severity='INFO')
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
