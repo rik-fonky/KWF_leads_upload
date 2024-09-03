@@ -95,8 +95,6 @@ common_api_params = config['common_api_params']
 # Merge credentials into the config dictionary
 common_api_params.update(credentials)
 
-print(common_api_params)
-
 # Mapping from CSV headers to API field names
 allowed_fields = config['allowed_fields']
 
