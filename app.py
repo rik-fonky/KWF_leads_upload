@@ -17,7 +17,7 @@ import os
 import io
 import logging
 import requests
-from flask import Flask
+from flask import Flask, request
 import pandas as pd
 from google.auth import default
 from googleapiclient.discovery import build
@@ -32,23 +32,33 @@ app = Flask(__name__)
 
 def setup_google_cloud_logging():
     # Instantiates a client
-    logging_client = cloud_logging.Client()
+    client = cloud_logging.Client()
 
-    # The name of the log to write to
-    logger_name = 'my-app-logger'
+    # Retrieves a Cloud Logging handler based on the environment
+    # and integrates the handler with the Python logging module.
+    # This captures all logs at INFO level and higher.
+    client.setup_logging()
 
-    # Selects the log to write to
-    logger = logging_client.logger(logger_name)
-    
-    return logger
+    # You can still set up additional handlers for local output
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
 
-# Create a global logger
-cloud_logger = setup_google_cloud_logging()
+    # Get the root logger and attach both handlers
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.addHandler(console_handler)
+
+    return root_logger
+
+# Initialize the logger
+logger = setup_google_cloud_logging()
 
 # Correcting the exception handling to log with severity
 def log_uncaught_exceptions(ex_cls, ex, tb):
-    cloud_logger.log_text(''.join(traceback.format_tb(tb)), severity='ERROR')
-    cloud_logger.log_text(f'{ex_cls.__name__}: {str(ex)}', severity='ERROR')
+    logging.error(''.join(traceback.format_tb(tb)))
+    logging.error(f'{ex_cls.__name__}: {str(ex)}')
 
 sys.excepthook = log_uncaught_exceptions
 # Get the directory where the script is located
@@ -114,10 +124,10 @@ def process_and_upload_leads(df):
             success_count += 1
         else:
             error_count += 1
-            cloud_logger.log_text(f"Lead upload failed: Data: {result.get('data')}, Error Message: {result.get('error')}", severity='ERROR')
+            logging.error(f"Lead upload failed: Data: {result.get('data')}, Error Message: {result.get('error')}")
 
-    cloud_logger.log_text(f"Total leads uploaded successfully: {success_count}", severity='INFO')
-    cloud_logger.log_text(f"Total leads failed to upload: {error_count}", severity='INFO')
+    logging.info(f"Total leads uploaded successfully: {success_count}")
+    logging.info(f"Total leads failed to upload: {error_count}")
     
     
 def build_drive_service():
@@ -149,11 +159,11 @@ def get_latest_file(service, folder_id, prefix):
     ).execute()
     items = results.get('files', [])
     if not items:
-        cloud_logger.log_text("No files found.", severity='ERROR')
+        logging.error("No files found.")
         return None, None
     else:
         latest_file = items[0]
-        cloud_logger.info(f"Latest file found: {latest_file['name']} with ID: {latest_file['id']}")
+        logging.info(f"Latest file found: {latest_file['name']} with ID: {latest_file['id']}")
         # Download the file content using the file ID if necessary or return its ID
         request = service.files().get_media(fileId=latest_file['id'],supportsAllDrives=True)
         fh = io.BytesIO()
@@ -177,7 +187,7 @@ def record_processed_file(file_name):
     blob.upload_from_string('')  # Upload an empty string as a marker
 
 def main():
-    cloud_logger.log_text("Starting the application.", severity='INFO')
+    logging.info("Starting the application.")
     service = build_drive_service()
     folder_id = config.get('folder_id')
     latest_file_content, latest_file_name = get_latest_file(service, folder_id, "KWF-D2D-KWFexport")
@@ -187,18 +197,18 @@ def main():
         process_and_upload_leads(df)
         record_processed_file(latest_file_name)
     else:
-        cloud_logger.log_text(f"File {latest_file_name} has already been processed.", severity='ERROR')
+        logging.warning(f"File {latest_file_name} has already been processed.")
 
 @app.route('/')
 def run_main():
-    cloud_logger.log_text("Received request at '/' endpoint", severity='INFO')
+    logging.info("Received request at '/' endpoint")
     try:
         main()
     except Exception as e:
-        cloud_logger.log_text("Error occurred during main execution", severity='ERROR', trace=traceback.format_exc())
+        logging.error("Error occurred during main execution", trace=traceback.format_exc())
         return "Internal Server Error", 500
     return "Script executed successfully."
 
 if __name__ == '__main__':
-    cloud_logger.log_text("Starting Flask application.", severity='INFO')
+    logging.info("Starting Flask application.")
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=True)
