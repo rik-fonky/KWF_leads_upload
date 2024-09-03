@@ -3,8 +3,6 @@
   "api_url": "http://fonky.telforce.nl/vicidial/non_agent_api.php",
   "common_api_params": {
     "source": "Google Cloud",
-    "user": "Fonky079",
-    "pass": "WelcomeBack2023",
     "function": "add_lead",
     "phone_code": "31",
     "list_id": "301",
