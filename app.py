@@ -26,7 +26,7 @@ import traceback
 from google.cloud import logging as cloud_logging
 from google.cloud import storage
 from googleapiclient.http import MediaIoBaseDownload
-
+from google.cloud import secretmanager
 
 app = Flask(__name__)
 
@@ -71,17 +71,37 @@ config_path = os.path.join(script_dir, 'config.json')
 with open(config_path) as config_file:
     config = json.load(config_file)
 
+
+def access_secret_version(secret_id, version_id="latest"):
+    client = secretmanager.SecretManagerServiceClient()
+    name = f"projects/637358609369/secrets/{secret_id}/versions/{version_id}"
+    response = client.access_secret_version(name=name)
+    secret_payload = response.payload.data.decode("UTF-8")
+    return secret_payload
+
+
+# Fetch credentials from Secret Manager
+credentials_json = access_secret_version("telforce_api_credentials")
+
+# Parse the credentials (assuming they are in JSON format)
+credentials = json.loads(credentials_json)
+
 # API Base URL
 api_url = config['api_url']
 
 # Common API parameters that are always included
 common_api_params = config['common_api_params']
 
+# Merge credentials into the config dictionary
+common_api_params.update(credentials)
+
+print(common_api_params)
+
 # Mapping from CSV headers to API field names
 allowed_fields = config['allowed_fields']
 
+
 def upload_lead(lead_data):
-    
     # Remove spaces from field names
     lead_data = {k.replace(' ', ''): v for k, v in lead_data.items()}
 
@@ -105,7 +125,7 @@ def upload_lead(lead_data):
     api_params = {**common_api_params, **filtered_data}
 
     response = requests.get(api_url, params=api_params)
-    print(f"Response Status: {response.status_code}, Response Text: {response.text}")
+    logging.info(f"Response Status: {response.status_code}, Response Text: {response.text}")
 
     if response.ok and 'ERROR' not in response.text:
         return {'success': True, 'data': lead_data}
