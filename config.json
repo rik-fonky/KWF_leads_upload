@@ -7,9 +7,8 @@
     "phone_code": "31",
     "list_id": "301",
     "dnc_check": "N",
-    "duplicate_check": "DUPSYS30DAY",
-    "custom_fields": "Y",
-    "template_id": "003"
+    "duplicate_check": "DUPLIST30DAY",
+    "custom_fields": "Y"
   },
   "allowed_fields": [
     "Bestandstype", "NaamBestandAanlevering", "DatumBestandAanlevering", "AccountIDvanhetwervingsbureau",
@@ -30,5 +29,5 @@
     "MutOptOutMobiel", "MutOptOutSMS", "MutToestemmingtekstID", "TekstIDConsent01", "TekstIDConsent02",
     "TekstIDConsent03", "MutOpmerking", "Oudbedragcustom"
 ],
-  "folder_id": "1jiJQL-vd0rd_SpUIlbzhjc-9d1kawRb7"
+  "folder_id": "1EnF0Ak4tcI3s3ExWDic1uDtfLT73JKFP"
 }
