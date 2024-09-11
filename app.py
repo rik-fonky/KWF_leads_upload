@@ -4,14 +4,6 @@ Created on Tue Jul 30 12:01:35 2024
 
 @author: Rik
 """
-
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Jul 22 13:26:47 2024
-
-@author: Rik
-"""
-
 import json
 import os
 import io
@@ -95,29 +87,37 @@ common_api_params = config['common_api_params']
 # Merge credentials into the config dictionary
 common_api_params.update(credentials)
 
+print(common_api_params)
+
 # Mapping from CSV headers to API field names
 allowed_fields = config['allowed_fields']
 
 
 def upload_lead(lead_data):
     # Remove spaces from field names
-    lead_data = {k.replace(' ', ''): v for k, v in lead_data.items()}
+    lead_data.index = lead_data.index.str.replace(' ', '')
 
     # Ensure the leading zero in the phone number is preserved and set phone_number field
     if 'TelefoonnrPrive1' in lead_data:
-        phone_number = str(lead_data['TelefoonnrPrive1']).zfill(10)
-        lead_data['TelefoonnrPrive1'] = phone_number
-        lead_data['phone_number'] = phone_number
+        # Replace NaN with default value
+        if pd.isna(lead_data['TelefoonnrPrive1']):
+            lead_data['TelefoonnrPrive1'] = '0600000000'
+            
+            
+        lead_data['TelefoonnrPrive1'] = str(lead_data['TelefoonnrPrive1'])
+        lead_data['phone_number'] = str(lead_data['TelefoonnrPrive1'])
         
     if 'OvereenkomstBedragPerPeriode' in lead_data:
         lead_data['Oudbedragcustom'] = lead_data['OvereenkomstBedragPerPeriode']
 
+    # Convert Series to dictionary for filtering
+    lead_data_dict = lead_data.to_dict()
 
-    filtered_data = {k: v for k, v in lead_data.items() if k in allowed_fields and pd.notna(v)}
+    filtered_data = {k: v for k, v in lead_data_dict.items() if k in allowed_fields and pd.notna(v)}
 
     # Ensure phone_number is included in the API call
     if 'phone_number' in lead_data:
-        filtered_data['phone_number'] = lead_data['phone_number']
+        filtered_data['phone_number'] = lead_data_dict['phone_number']
         
         
     api_params = {**common_api_params, **filtered_data}
@@ -132,22 +132,25 @@ def upload_lead(lead_data):
         return {'success': False, 'data': lead_data, 'error': error_message}
 
 def process_and_upload_leads(df):
-    leads = df.to_dict(orient='records')
     success_count = 0
     error_count = 0
+    error_details = []
 
-    for lead in leads:
-        result = upload_lead(lead)
+    for index, row in df.iterrows():
+        result = upload_lead(row)
         if result['success']:
             success_count += 1
         else:
             error_count += 1
-            logging.error(f"Lead upload failed: Data: {result.get('data')}, Error Message: {result.get('error')}")
+            error_details.append(result)
 
-    logging.info(f"Total leads uploaded successfully: {success_count}")
-    logging.info(f"Total leads failed to upload: {error_count}")
-    
-    
+    logging.info(f'Total leads uploaded successfully: {success_count}')
+    logging.info(f'Total leads failed to upload: {error_count}')
+    if error_details:
+        logging.error('Error details:')
+        for error in error_details:
+            logging.error(f'Data: {error.get("data")}, Error Message: {error.get("error")}')
+
 def build_drive_service():
     # Define the scopes required for the Google Drive service
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -210,12 +213,12 @@ def main():
     folder_id = config.get('folder_id')
     latest_file_content, latest_file_name = get_latest_file(service, folder_id, "KWF-D2D-KWFexport")
 
-    if latest_file_content and not is_file_processed(latest_file_name):
-        df = pd.read_csv(latest_file_content, delimiter=';')
-        process_and_upload_leads(df)
-        record_processed_file(latest_file_name)
-    else:
-        logging.warning(f"File {latest_file_name} has already been processed.")
+    # if latest_file_content and not is_file_processed(latest_file_name):
+    df = pd.read_csv(latest_file_content, delimiter=';')
+    process_and_upload_leads(df)
+    # record_processed_file(latest_file_name)
+    # else:
+    #     logging.warning(f"File {latest_file_name} has already been processed.")
 
 @app.route('/')
 def run_main():
