@@ -213,12 +213,12 @@ def main():
     folder_id = config.get('folder_id')
     latest_file_content, latest_file_name = get_latest_file(service, folder_id, "KWF-D2D-KWFexport")
 
-    # if latest_file_content and not is_file_processed(latest_file_name):
-    df = pd.read_csv(latest_file_content, delimiter=';')
-    process_and_upload_leads(df)
-    # record_processed_file(latest_file_name)
-    # else:
-    #     logging.warning(f"File {latest_file_name} has already been processed.")
+    if latest_file_content and not is_file_processed(latest_file_name):
+        df = pd.read_csv(latest_file_content, delimiter=';')
+        process_and_upload_leads(df)
+        record_processed_file(latest_file_name)
+    else:
+        logging.warning(f"File {latest_file_name} has already been processed.")
 
 @app.route('/')
 def run_main():
