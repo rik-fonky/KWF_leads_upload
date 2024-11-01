@@ -14,6 +14,7 @@ import pandas as pd
 from google.auth import default
 from googleapiclient.discovery import build
 import sys
+from requests.adapters import HTTPAdapter
 import traceback
 from google.cloud import logging as cloud_logging
 from google.cloud import storage
@@ -21,6 +22,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.cloud import secretmanager
 import concurrent.futures
 
+session = None
 
 app = Flask(__name__)
 
@@ -94,6 +96,31 @@ print(common_api_params)
 # Mapping from CSV headers to API field names
 allowed_fields = config['allowed_fields']
 
+def chunk_dataframe(df, chunk_size):
+    """Yield successive chunks from the DataFrame."""
+    for i in range(0, len(df), chunk_size):
+        yield df.iloc[i:i + chunk_size]
+        
+def setup_global_session(retries=3, backoff_factor=1.0, status_forcelist=(500, 502, 503, 504)):
+    """
+    Set up a global session with retry and connection pooling.
+    """
+    global session  # Use the global variable
+    session = requests.Session()  # Create a session object
+    retry = Retry(
+        total=retries,
+        read=retries,
+        connect=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+        allowed_methods=frozenset(['GET', 'POST'])  # Ensure retrying on GET and POST requests
+    )
+    adapter = HTTPAdapter(max_retries=retry, pool_connections=50, pool_maxsize=50)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+# Call the function to set up the session at the start
+setup_global_session()
 
 def upload_lead(lead_data):
     # Remove spaces from field names
@@ -124,7 +151,7 @@ def upload_lead(lead_data):
         
     api_params = {**common_api_params, **filtered_data}
 
-    response = requests.get(api_url, params=api_params)
+    response = session.get(api_url, params=api_params, timeout=20)
     logging.info(f"Response Status: {response.status_code}, Response Text: {response.text}")
 
     if response.ok and 'ERROR' not in response.text:
