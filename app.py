@@ -19,6 +19,8 @@ from google.cloud import logging as cloud_logging
 from google.cloud import storage
 from googleapiclient.http import MediaIoBaseDownload
 from google.cloud import secretmanager
+import concurrent.futures
+
 
 app = Flask(__name__)
 
@@ -131,25 +133,36 @@ def upload_lead(lead_data):
         error_message = response.text
         return {'success': False, 'data': lead_data, 'error': error_message}
 
-def process_and_upload_leads(df):
+def process_and_upload_leads(df, chunk_size=20):
     success_count = 0
     error_count = 0
-    error_details = []
+    errors = defaultdict(list)
 
-    for index, row in df.iterrows():
-        result = upload_lead(row)
-        if result['success']:
-            success_count += 1
-        else:
-            error_count += 1
-            error_details.append(result)
+    # Break the DataFrame into chunks
+    for chunk in chunk_dataframe(df, chunk_size=chunk_size):
+        logging.info(f"Processing chunk with {len(chunk)} leads")
 
-    logging.info(f'Total leads uploaded successfully: {success_count}')
-    logging.info(f'Total leads failed to upload: {error_count}')
-    if error_details:
-        logging.error('Error details:')
-        for error in error_details:
-            logging.error(f'Data: {error.get("data")}, Error Message: {error.get("error")}')
+        # Create a thread pool for each chunk
+        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            futures = [executor.submit(upload_lead, row) for index, row in chunk.iterrows()]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    result = future.result()
+                    if result['success']:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                        error_parts = result['error'].split(' - ')
+                        generic_error_msg = error_parts[0]
+                        detail = error_parts[1].strip() if len(error_parts) > 1 else "No specific detail"
+                        errors[generic_error_msg].append(detail)
+                except Exception as e:
+                    error_count += 1
+                    errors['Exception occurred'].append(str(e).strip())
+
+        logging.info(f"Finished processing chunk. Success: {success_count}, Errors: {error_count}")
+        
+        time.sleep(1)  # Introduce a short pause to prevent overwhelming the API server
 
 def build_drive_service():
     # Define the scopes required for the Google Drive service
