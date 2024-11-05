@@ -4,24 +4,27 @@ Created on Tue Jul 30 12:01:35 2024
 
 @author: Rik
 """
+import concurrent.futures
 import json
 import os
 import io
 import logging
 import requests
-from flask import Flask, request
+from flask import Flask
 import pandas as pd
 from google.auth import default
+from google.cloud import storage
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 import sys
-from requests.adapters import HTTPAdapter
 import traceback
 from google.cloud import logging as cloud_logging
-from google.cloud import storage
-from googleapiclient.http import MediaIoBaseDownload
 from google.cloud import secretmanager
-import concurrent.futures
+import chardet
+from collections import defaultdict
+from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import time
 
 session = None
 
