@@ -264,15 +264,17 @@ def main():
     else:
         logging.warning(f"File {latest_file_name} has already been processed.")
 
+    return latest_file_name
+
 @app.route('/')
 def run_main():
     logging.info("Received request at '/' endpoint")
     try:
-        main()
+        files_processed = main()
     except Exception as e:
-        logging.error("Error occurred during main execution", trace=traceback.format_exc())
+        logging.error("Error occurred", exc_info=True)
         return "Internal Server Error", 500
-    return "Script executed successfully."
+    return f"Script executed successfully, with the following processed files {files_processed}"
 
 if __name__ == '__main__':
     logging.info("Starting Flask application.")
