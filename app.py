@@ -316,14 +316,13 @@ def optin_velden_fix(leads_df):
 
 
 def main():
-    service = build_drive_service()
     logging.info("Starting the application.")
     df_latest_file, latest_file_name = get_latest_file_sftp()
     logging.info(latest_file_name)
     if not df_latest_file.empty and not is_file_processed(latest_file_name):
         df_leads = optin_velden_fix(df_latest_file)
         process_and_upload_leads(df_leads)
-        record_processed_file(df_leads)
+        record_processed_file(latest_file_name)
     else:
         logging.warning(f"File {latest_file_name} has already been processed.")
 
