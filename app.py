@@ -25,6 +25,9 @@ from collections import defaultdict
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 import time
+from paramiko import Transport, SFTPClient
+from fnmatch import fnmatch
+
 
 session = None
 
@@ -83,8 +86,12 @@ def access_secret_version(secret_id, version_id="latest"):
 # Fetch credentials from Secret Manager
 credentials_json = access_secret_version("telforce_api_credentials")
 
+credentials_sftp_json = access_secret_version("benw-sftp-credentials")
+
 # Parse the credentials (assuming they are in JSON format)
 credentials = json.loads(credentials_json)
+
+credentials_sftp = json.loads(credentials_sftp_json)
 
 # API Base URL
 api_url = config['api_url']
@@ -95,7 +102,6 @@ common_api_params = config['common_api_params']
 # Merge credentials into the config dictionary
 common_api_params.update(credentials)
 
-print(common_api_params)
 
 # Mapping from CSV headers to API field names
 allowed_fields = config['allowed_fields']
@@ -210,34 +216,76 @@ def build_drive_service():
     service = build('drive', 'v3', credentials=credentials)
     return service
 
-def get_latest_file(service, folder_id, prefix):
-    """Fetch the latest file from Google Drive with the specified prefix in the given folder."""
-    query = f"'{folder_id}' in parents and name contains '{prefix}' and trashed = false"
-    results = service.files().list(
-        q=query,
-        spaces='drive',
-        fields='files(id, name, modifiedTime)',
-        orderBy='modifiedTime desc',  # Order by last modified time descending
-        pageSize=1,
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True# We only need the most recent file
-    ).execute()
-    items = results.get('files', [])
-    if not items:
-        logging.error("No files found.")
-        return None, None
-    else:
-        latest_file = items[0]
-        logging.info(f"Latest file found: {latest_file['name']} with ID: {latest_file['id']}")
-        # Download the file content using the file ID if necessary or return its ID
-        request = service.files().get_media(fileId=latest_file['id'],supportsAllDrives=True)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while done is False:
-            status, done = downloader.next_chunk()
-        fh.seek(0)
-        return fh, latest_file['name']
+def clean_phone_number(phone_number):
+    phone_str = str(phone_number).strip()
+    if phone_str.endswith('.0'):
+        phone_str = phone_str[:-2]
+    if phone_str.startswith('316'):
+        return phone_str[2:]
+    elif phone_str.startswith('0'):
+        return phone_str[1:]
+    return phone_str
+
+
+
+def get_latest_file_sftp():
+    try:
+        # Establish SFTP connection
+        SFTP_HOST = credentials_sftp["sftp_host"]
+        SFTP_PORT = int(credentials_sftp["sftp_port"])
+        SFTP_USERNAME = credentials_sftp["sftp_username"]
+        SFTP_PASSWORD = credentials_sftp["sftp_password"]
+        SFTP_DIRECTORY = credentials_sftp["sftp_directory"]
+        
+        
+        transport = Transport((SFTP_HOST, SFTP_PORT))
+        transport.connect(username=SFTP_USERNAME, password=SFTP_PASSWORD)
+        sftp = SFTPClient.from_transport(transport)
+        
+        # Construct file name pattern to match
+        file_pattern = f"KWF-D2D*.csv"
+        
+        # Debugging output
+        print(f"Searching for files matching pattern: {file_pattern}")
+        
+        # Get list of files in SFTP directory
+        files_in_directory = sftp.listdir_attr(SFTP_DIRECTORY)
+        
+        # Filter files matching the pattern and find the latest file by modification time
+        latest_file = None
+        latest_mtime = 0
+        for file_info in files_in_directory:
+            if fnmatch(file_info.filename, file_pattern):
+                if file_info.st_mtime > latest_mtime:
+                    latest_file = file_info
+                    latest_mtime = file_info.st_mtime
+
+        # If no matching file is found, return an empty DataFrame and None
+        if not latest_file:
+            print("No matching files found.")
+            return pd.DataFrame(), None
+
+        # Open the latest file and process it
+        latest_file_path = f"{SFTP_DIRECTORY.rstrip('/')}/{latest_file.filename}"
+        print(f"Latest file found: {latest_file.filename}, modified at {latest_file.st_mtime}")
+        
+        with sftp.open(latest_file_path) as file:
+            df = pd.read_csv(file, sep=';')
+            if 'Telefoonnr Prive1' in df.columns:
+                # Clean Telefoon column: remove non-numeric characters and leading zeros
+                df['Telefoonnr Prive1'] = df['Telefoonnr Prive1'].fillna('-1').astype(str).apply(clean_phone_number)
+
+        # Close SFTP connection
+        sftp.close()
+        transport.close()
+        
+        # Return the DataFrame and filename
+        return df, latest_file.filename
+
+    except Exception as e:
+        print(f"Error: {e}")
+        return pd.DataFrame(), None  # Return an empty DataFrame and None on error
+
 
 def is_file_processed(file_name):
     storage_client = storage.Client()
@@ -251,16 +299,30 @@ def record_processed_file(file_name):
     blob = bucket.blob(f'KWF_leads/processed_files/{file_name}')
     blob.upload_from_string('')  # Upload an empty string as a marker
 
+
+def optin_velden_fix(leads_df):
+    
+    leads_df.loc[leads_df["Extraveld1 - opt-in Tel"] == "Yes", "MutOptOutTM"] = "N"
+    leads_df.loc[leads_df["Extraveld1 - opt-in Tel"] == "No", "MutOptOutTM"] = "Y"
+    
+    leads_df.loc[leads_df["Extraveld2 - opt-in SMS"] == "Yes", "MutOptOutSMS"] = "N"
+    leads_df.loc[leads_df["Extraveld2 - opt-in SMS"] == "No", "MutOptOutSMS"] = "Y"
+    
+    leads_df.loc[leads_df["Extraveld3 - opt-in E-mail"] == "Yes", "MutOptOutEM"] = "N"
+    leads_df.loc[leads_df["Extraveld3 - opt-in E-mail"] == "No", "MutOptOutEM"] = "Y"
+    
+    
+    return leads_df
+
+
 def main():
     logging.info("Starting the application.")
-    service = build_drive_service()
-    folder_id = config.get('folder_id')
-    latest_file_content, latest_file_name = get_latest_file(service, folder_id, "KWF-D2D-KWFexport")
-
-    if latest_file_content and not is_file_processed(latest_file_name):
-        df = pd.read_csv(latest_file_content, delimiter=';')
-        process_and_upload_leads(df)
-        record_processed_file(latest_file_name)
+    df_latest_file, latest_file_name = get_latest_file_sftp()
+    logging.info(latest_file_name)
+    if not df_latest_file.empty and not is_file_processed(latest_file_name):
+        df_leads = optin_velden_fix(df_latest_file)
+        process_and_upload_leads(df_leads)
+        record_processed_file(df_leads)
     else:
         logging.warning(f"File {latest_file_name} has already been processed.")
 
@@ -273,7 +335,7 @@ def run_main():
         files_processed = main()
     except Exception as e:
         logging.error("Error occurred", exc_info=True)
-        return "Internal Server Error", 500
+        return "Internal Server Error", 500 
     return f"Script executed successfully, with the following processed files {files_processed}"
 
 if __name__ == '__main__':
