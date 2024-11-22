@@ -316,6 +316,7 @@ def optin_velden_fix(leads_df):
 
 
 def main():
+    service = build_drive_service()
     logging.info("Starting the application.")
     df_latest_file, latest_file_name = get_latest_file_sftp()
     logging.info(latest_file_name)
